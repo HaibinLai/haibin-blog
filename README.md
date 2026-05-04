@@ -6,7 +6,7 @@ https://www.haibinlaiblog.top/
 
 ## How it works
 
-`vercel.json` rewrites every request path to the WordPress origin:
+`vercel.json` sends every request to `api/proxy.js`. The proxy fetches the WordPress origin and rewrites absolute origin links in text responses so CSS, JavaScript, images, and WordPress routes keep going through the Vercel domain:
 
 ```text
 https://your-vercel-domain.com/some/path
@@ -23,4 +23,4 @@ After deployment, visiting the Vercel domain should show the WordPress blog thro
 
 ## Notes
 
-WordPress may still output absolute links, redirects, cookies, or admin URLs that point to the original domain. If this proxy becomes the main production domain, also update the WordPress `home` and `siteurl` settings or configure domain handling on the WordPress side.
+This proxy rewrites common absolute links and redirects, but WordPress admin login, cookies, and some plugin-generated URLs may still need domain-aware WordPress settings if the Vercel domain becomes the main production address.
