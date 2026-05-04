@@ -118,6 +118,8 @@ function isPrivateWordPressPath(pathname) {
     normalizedPathname.startsWith("/login") ||
     normalizedPathname.startsWith("/wp-login.php") ||
     normalizedPathname.startsWith("/wp-admin") ||
+    normalizedPathname.startsWith("/wp-includes") ||
+    normalizedPathname.startsWith("/wp-content/plugins") ||
     normalizedPathname.startsWith("/wp-json") ||
     normalizedPathname.startsWith("/xmlrpc.php")
   );
@@ -179,11 +181,12 @@ module.exports = async function proxy(req, res) {
   }
 
   const contentType = upstream.headers.get("content-type") || "";
-  const isTextResponse =
+  const isRewritableTextResponse =
     contentType.includes("text/") ||
-    contentType.includes("javascript") ||
     contentType.includes("json") ||
     contentType.includes("xml");
+  const isTextResponse =
+    isRewritableTextResponse || contentType.includes("javascript");
 
   if (isTextResponse) {
     const body = await upstream.text();
@@ -193,7 +196,9 @@ module.exports = async function proxy(req, res) {
         ? "private, no-store"
         : "s-maxage=60, stale-while-revalidate=300"
     );
-    res.end(rewriteText(body, publicOrigin));
+    res.end(
+      isRewritableTextResponse ? rewriteText(body, publicOrigin) : body
+    );
     return;
   }
 
