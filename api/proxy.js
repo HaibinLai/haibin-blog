@@ -85,6 +85,61 @@ function rewriteText(body, publicOrigin) {
     .replaceAll(`//${ORIGIN_HOST}`, `//${publicHost}`);
 }
 
+function getAdminBootstrap(publicOrigin) {
+  const sprintfFallback = String.raw`
+    function sprintf(format) {
+      var index = 0;
+      var args = Array.prototype.slice.call(arguments, 1);
+      return String(format).replace(/%[sdif]/g, function() {
+        return typeof args[index] === "undefined" ? "" : args[index++];
+      });
+    }`;
+
+  return `
+<script src="${publicOrigin}/wp-includes/js/jquery/jquery.min.js?ver=3.7.1"></script>
+<script src="${publicOrigin}/wp-includes/js/jquery/jquery-migrate.min.js?ver=3.4.1"></script>
+<script src="${publicOrigin}/wp-includes/js/dist/hooks.min.js?ver=6.9.4"></script>
+<script src="${publicOrigin}/wp-includes/js/dist/i18n.min.js?ver=6.9.4"></script>
+<script>
+(function() {
+  window.jQuery = window.jQuery || window.$;
+  window.$ = window.jQuery || window.$;
+  window.Zepto = window.Zepto || window.jQuery;
+  window.wp = window.wp || {};
+  ${sprintfFallback}
+  window.wp.i18n = window.wp.i18n || {
+    __: function(text) { return text; },
+    _x: function(text) { return text; },
+    _n: function(single, plural, number) { return Number(number) === 1 ? single : plural; },
+    _nx: function(single, plural, number) { return Number(number) === 1 ? single : plural; },
+    sprintf: sprintf,
+    setLocaleData: function() {},
+    hasTranslation: function() { return false; },
+    isRTL: function() { return false; }
+  };
+  window.wp.i18n.sprintf = window.wp.i18n.sprintf || sprintf;
+})();
+</script>`;
+}
+
+function injectAdminBootstrap(body, publicOrigin, pathname, contentType) {
+  if (
+    !contentType.includes("text/html") ||
+    !isPrivateWordPressPath(pathname) ||
+    body.includes("data-haibin-admin-bootstrap")
+  ) {
+    return body;
+  }
+
+  const bootstrap = `<script data-haibin-admin-bootstrap="1"></script>${getAdminBootstrap(publicOrigin)}`;
+
+  if (/<head(\s[^>]*)?>/i.test(body)) {
+    return body.replace(/<head(\s[^>]*)?>/i, (match) => `${match}${bootstrap}`);
+  }
+
+  return `${bootstrap}${body}`;
+}
+
 function splitSetCookieHeader(header) {
   if (!header) {
     return [];
@@ -189,7 +244,12 @@ module.exports = async function proxy(req, res) {
     isRewritableTextResponse || contentType.includes("javascript");
 
   if (isTextResponse) {
-    const body = await upstream.text();
+    const body = injectAdminBootstrap(
+      await upstream.text(),
+      publicOrigin,
+      proxyPath,
+      contentType
+    );
     res.setHeader(
       "cache-control",
       cookies.length > 0 || isPrivateWordPressPath(proxyPath)
